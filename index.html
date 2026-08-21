@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>6×6 Binary Puzzle – with all images</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            width: 100vw;
+            min-height: 100vh;
+            overflow-y: auto;
+            font-family: 'Segoe UI', Roboto, sans-serif;
+            user-select: none;
+            background-image: url('bcodeface.png');
+            background-size: 100% auto;
+            background-repeat: no-repeat;
+            background-position: top left;
+            background-color: #1a1a2e;
+        }
+
+        #overlay {
+            position: relative;
+            width: 100%;
+            min-height: inherit;
+            pointer-events: none;
+        }
+
+        /* ── Extra images ── */
+        .extra-image {
+            position: absolute;
+            pointer-events: none;
+            z-index: 0;
+            object-fit: contain;
+            /* TEMPORARY: add a red border so you can see them */
+            border: 2px solid red;
+            background-color: rgba(255, 255, 255, 0.1); /* faint background to show area */
+        }
+
+        /* ── Numbers ── */
+        .number-item {
+            position: absolute;
+            pointer-events: auto;
+            z-index: 1;
+            font-weight: 700;
+            text-align: center;
+            transform: translate(-50%, -50%);
+            line-height: 1;
+            transition: color 0.15s;
+            background: transparent;
+            color: #ffffff;
+            text-shadow: 0 0 25px rgba(0, 0, 0, 0.95), 0 2px 10px rgba(0, 0, 0, 0.9);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 48px;
+            width: 80px;
+            height: 80px;
+        }
+        .number-item.state-1 {
+            color: #ffd93d;
+            text-shadow: 0 0 40px rgba(255, 217, 61, 0.5), 0 0 20px rgba(0, 0, 0, 0.9);
+        }
+
+        @media (max-width: 600px) {
+            .number-item {
+                width: 60px;
+                height: 60px;
+                font-size: 36px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="overlay">
+        <!-- Images and numbers will be injected here -->
+    </div>
+
+    <script>
+        // ================================================================
+        //  CONFIGURATION – EDIT THESE VALUES
+        // ================================================================
+
+        const SCALE = 1.0;   // resize all numbers
+
+        // Your exact number positions (already correct)
+        const POSITIONS = [
+            { x: 18, y: 25 },  { x: 31, y: 25 },  { x: 44, y: 25 },  { x: 57, y: 25 },  { x: 70, y: 25 },  { x: 83, y: 25 },
+            { x: 18, y: 32 },  { x: 31, y: 32 },  { x: 44, y: 32 },  { x: 57, y: 32 },  { x: 70, y: 32 },  { x: 83, y: 32 },
+            { x: 18, y: 38.5 },{ x: 31, y: 38.5 },{ x: 44, y: 38.5 },{ x: 57, y: 38.5 },{ x: 70, y: 38.5 },{ x: 83, y: 38.5 },
+            { x: 18, y: 45.5 },{ x: 31, y: 45.5 },{ x: 44, y: 45.5 },{ x: 57, y: 45.5 },{ x: 70, y: 45.5 },{ x: 83, y: 45.5 },
+            { x: 18, y: 52 },  { x: 31, y: 52 },  { x: 44, y: 52 },  { x: 57, y: 52 },  { x: 70, y: 52 },  { x: 83, y: 52 },
+            { x: 18, y: 58.5 },{ x: 31, y: 58.5 },{ x: 44, y: 58.5 },{ x: 57, y: 58.5 },{ x: 70, y: 58.5 },{ x: 83, y: 58.5 }
+        ];
+
+        // ─── All your extra images ──────────────────────────────────────
+        const EXTRA_IMAGES = [
+            // solution box (already there)
+            { src: 'solutionbox.png', x: 10, y: 70, width: 25, height: 'auto' },
+            // New images – spread across the bottom (y = 75–85%)
+            { src: 'greencut.png',    x: 5,  y: 75, width: 12, height: 'auto' },
+            { src: 'redbluecut.png',  x: 20, y: 75, width: 12, height: 'auto' },
+            { src: 'hole.png',        x: 35, y: 75, width: 12, height: 'auto' },
+            { src: 'screw1.png',      x: 50, y: 75, width: 10, height: 'auto' },
+            { src: 'screw2.png',      x: 62, y: 75, width: 10, height: 'auto' },
+            { src: 'screw3.png',      x: 74, y: 75, width: 10, height: 'auto' },
+            { src: 'screw4.png',      x: 86, y: 75, width: 10, height: 'auto' },
+        ];
+
+        // ================================================================
+        //  END OF CONFIGURATION – DO NOT EDIT BELOW
+        // ================================================================
+
+        const overlay = document.getElementById('overlay');
+        const total = POSITIONS.length;
+        const state = new Array(total).fill(0);
+
+        // ─── Set body height to match background ──────────────────────
+        function setBodyHeight() {
+            const img = new Image();
+            img.onload = function() {
+                const aspect = img.width / img.height;
+                const heightPx = window.innerWidth / aspect;
+                document.body.style.minHeight = heightPx + 'px';
+                overlay.style.minHeight = heightPx + 'px';
+            };
+            img.src = 'bcodeface.png';
+        }
+
+        // ─── Render extra images ────────────────────────────────────────
+        function renderExtraImages() {
+            EXTRA_IMAGES.forEach((imgData) => {
+                const img = document.createElement('img');
+                img.src = imgData.src;
+                img.className = 'extra-image';
+                img.style.left = imgData.x + '%';
+                img.style.top = imgData.y + '%';
+                const w = imgData.width;
+                const h = imgData.height;
+                img.style.width = (w !== 'auto' ? w + '%' : 'auto');
+                img.style.height = (h !== 'auto' ? h + '%' : 'auto');
+                overlay.appendChild(img);
+            });
+        }
+
+        // ─── Render numbers ──────────────────────────────────────────────
+        function renderNumbers() {
+            const baseSize = 48;
+            const scaledSize = baseSize * SCALE;
+            POSITIONS.forEach((pos, index) => {
+                const el = document.createElement('div');
+                el.className = `number-item state-${state[index]}`;
+                el.textContent = state[index];
+                el.style.fontSize = scaledSize + 'px';
+                el.style.width = (scaledSize * 1.6) + 'px';
+                el.style.height = (scaledSize * 1.6) + 'px';
+                el.style.left = pos.x + '%';
+                el.style.top = pos.y + '%';
+                el.addEventListener('click', function(e) {
+                    state[index] = state[index] === 0 ? 1 : 0;
+                    this.textContent = state[index];
+                    this.className = `number-item state-${state[index]}`;
+                });
+                overlay.appendChild(el);
+            });
+        }
+
+        // ─── Init ─────────────────────────────────────────────────────────
+        setBodyHeight();
+        renderExtraImages();
+        renderNumbers();
+        window.addEventListener('resize', setBodyHeight);
+    </script>
+</body>
+</html>
