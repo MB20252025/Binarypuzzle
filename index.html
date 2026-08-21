@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>6×6 Binary Puzzle – with extra images</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            width: 100vw;
+            min-height: 100vh;
+            overflow-y: auto;               /* scrollable */
+            font-family: 'Segoe UI', Roboto, sans-serif;
+            user-select: none;
+            /* Background image will be set by JS, with size & height */
+            background-image: url('bcodeface.png');
+            background-size: 100% auto;     /* width = 100vw, height scales */
+            background-repeat: no-repeat;
+            background-position: top left;
+            background-color: #1a1a2e;
+        }
+
+        /* ── Overlay container ── */
+        #overlay {
+            position: relative;
+            width: 100%;
+            min-height: inherit;            /* matches body height */
+            pointer-events: none;           /* allow clicks on numbers */
+        }
+
+        /* ── Extra images (positioned absolutely) ── */
+        .extra-image {
+            position: absolute;
+            pointer-events: none;           /* don't block clicks */
+            z-index: 0;                     /* behind numbers */
+            object-fit: contain;
+        }
+
+        /* ── Numbers ── */
+        .number-item {
+            position: absolute;
+            pointer-events: auto;           /* clickable */
+            z-index: 1;                     /* on top of images */
+            font-weight: 700;
+            text-align: center;
+            transform: translate(-50%, -50%);
+            line-height: 1;
+            transition: color 0.15s;
+            background: transparent;
+            color: #ffffff;
+            text-shadow: 0 0 25px rgba(0, 0, 0, 0.95), 0 2px 10px rgba(0, 0, 0, 0.9);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 48px;
+            width: 80px;
+            height: 80px;
+        }
+
+        .number-item.state-1 {
+            color: #ffd93d;
+            text-shadow: 0 0 40px rgba(255, 217, 61, 0.5), 0 0 20px rgba(0, 0, 0, 0.9);
+        }
+
+        @media (max-width: 600px) {
+            .number-item {
+                width: 60px;
+                height: 60px;
+                font-size: 36px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="overlay">
+        <!-- Extra images will be injected here by JS -->
+        <!-- Numbers will be injected here by JS -->
+    </div>
+
+    <script>
+        // ================================================================
+        //  CONFIGURATION – EDIT THESE VALUES TO CUSTOMIZE THE PUZZLE
+        // ================================================================
+
+        // 1. Overall scale of ALL numbers
+        const SCALE = 1.0;   // e.g., 0.8 = smaller, 1.5 = larger
+
+        // 2. Positions for each of the 36 numbers (6 columns × 6 rows)
+        //    x = % from left edge of the background image
+        //    y = % from top edge of the background image
+        const POSITIONS = [
+            // Row 1
+            { x: 18, y: 25 },  // Tile  0
+            { x: 31, y: 25 },  // Tile  1
+            { x: 44, y: 25 },  // Tile  2
+            { x: 57, y: 25 },  // Tile  3
+            { x: 70, y: 25 },  // Tile  4
+            { x: 83, y: 25 },  // Tile  5
+            // Row 2
+            { x: 18, y: 32 },  // Tile  6
+            { x: 31, y: 32 },  // Tile  7
+            { x: 44, y: 32 },  // Tile  8
+            { x: 57, y: 32 },  // Tile  9
+            { x: 70, y: 32 },  // Tile 10
+            { x: 83, y: 32 },  // Tile 11
+            // Row 3
+            { x: 18, y: 38.5 },  // Tile 12
+            { x: 31, y: 38.5 },  // Tile 13
+            { x: 44, y: 38.5 },  // Tile 14
+            { x: 57, y: 38.5 },  // Tile 15
+            { x: 70, y: 38.5 },  // Tile 16
+            { x: 83, y: 38.5 },  // Tile 17
+            // Row 4
+            { x: 18, y: 45.5 },  // Tile 18
+            { x: 31, y: 45.5 },  // Tile 19
+            { x: 44, y: 45.5 },  // Tile 20
+            { x: 57, y: 45.5 },  // Tile 21
+            { x: 70, y: 45.5 },  // Tile 22
+            { x: 83, y: 45.5 },  // Tile 23
+            // Row 5
+            { x: 18, y: 52 },  // Tile 24
+            { x: 31, y: 52 },  // Tile 25
+            { x: 44, y: 52 },  // Tile 26
+            { x: 57, y: 52 },  // Tile 27
+            { x: 70, y: 52 },  // Tile 28
+            { x: 83, y: 52 },  // Tile 29
+            // Row 6
+            { x: 18, y: 58.5 },  // Tile 30
+            { x: 31, y: 58.5 },  // Tile 31
+            { x: 44, y: 58.5 },  // Tile 32
+            { x: 57, y: 58.5 },  // Tile 33
+            { x: 70, y: 58.5 },  // Tile 34
+            { x: 83, y: 58.5 }   // Tile 35
+        ];
+
+        // 3. Extra images (add as many as you like)
+        //    Each image: src, x (%), y (%), width (%), height (%) – use 'auto' to keep aspect ratio
+        const EXTRA_IMAGES = [
+            // Example: solution box
+            { src: 'solutionbox.png', x: 10, y: 70, width: 25, height: 'auto' },
+            // Add your new images below (uncomment and adjust positions)
+            // { src: 'greencut.png',    x: 20, y: 80, width: 15, height: 'auto' },
+            // { src: 'redbluecut.png',  x: 40, y: 80, width: 15, height: 'auto' },
+            // { src: 'hole.png',        x: 60, y: 80, width: 15, height: 'auto' },
+            // { src: 'screw1.png',      x: 10, y: 90, width: 10, height: 'auto' },
+            // { src: 'screw2.png',      x: 30, y: 90, width: 10, height: 'auto' },
+            // { src: 'screw3.png',      x: 50, y: 90, width: 10, height: 'auto' },
+            // { src: 'screw4.png',      x: 70, y: 90, width: 10, height: 'auto' },
+        ];
+
+        // ================================================================
+        //  END OF CONFIGURATION – DO NOT EDIT BELOW THIS LINE
+        // ================================================================
+
+        const overlay = document.getElementById('overlay');
+        const total = POSITIONS.length;
+        const state = new Array(total).fill(0);
+
+        // ─── Load background image to set body height ──────────────────
+        function setBodyHeight() {
+            const img = new Image();
+            img.onload = function() {
+                const aspect = img.width / img.height;
+                // body width = 100vw, so height should be 100vw / aspect
+                // we set min-height on body and overlay
+                const heightPx = window.innerWidth / aspect;
+                document.body.style.minHeight = heightPx + 'px';
+                overlay.style.minHeight = heightPx + 'px';
+            };
+            img.src = 'bcodeface.png'; // same as background
+        }
+
+        // ─── Render extra images ────────────────────────────────────────
+        function renderExtraImages() {
+            EXTRA_IMAGES.forEach((imgData) => {
+                const img = document.createElement('img');
+                img.src = imgData.src;
+                img.className = 'extra-image';
+                img.style.left = imgData.x + '%';
+                img.style.top = imgData.y + '%';
+
+                // Handle width/height
+                const w = imgData.width;
+                const h = imgData.height;
+                img.style.width = (w !== 'auto' ? w + '%' : 'auto');
+                img.style.height = (h !== 'auto' ? h + '%' : 'auto');
+
+                overlay.appendChild(img);
+            });
+        }
+
+        // ─── Render numbers ──────────────────────────────────────────────
+        function renderNumbers() {
+            const baseSize = 48;
+            const scaledSize = baseSize * SCALE;
+
+            POSITIONS.forEach((pos, index) => {
+                const el = document.createElement('div');
+                el.className = `number-item state-${state[index]}`;
+                el.textContent = state[index];
+
+                el.style.fontSize = scaledSize + 'px';
+                el.style.width = (scaledSize * 1.6) + 'px';
+                el.style.height = (scaledSize * 1.6) + 'px';
+                el.style.left = pos.x + '%';
+                el.style.top = pos.y + '%';
+
+                el.addEventListener('click', function(e) {
+                    state[index] = state[index] === 0 ? 1 : 0;
+                    this.textContent = state[index];
+                    this.className = `number-item state-${state[index]}`;
+                });
+
+                overlay.appendChild(el);
+            });
+        }
+
+        // ─── Init ─────────────────────────────────────────────────────────
+        setBodyHeight();
+        renderExtraImages();
+        renderNumbers();
+
+        // Recalculate height on window resize
+        window.addEventListener('resize', setBodyHeight);
+    </script>
+</body>
+</html>
