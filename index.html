@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>6×6 Binary Puzzle – Manual Positions</title>
+    <style>
+        /* ── Full‑screen image ── */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            /* The image fills the entire viewport */
+            background-image: url('bcodeface.png');
+            background-size: cover;      /* change to 'contain' if needed */
+            background-position: center;
+            background-repeat: no-repeat;
+            background-color: #1a1a2e;   /* fallback colour */
+            font-family: 'Segoe UI', Roboto, sans-serif;
+            user-select: none;
+        }
+
+        /* ── Numbers overlay ── */
+        #numbers-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;        /* let clicks pass to numbers */
+        }
+
+        .number-item {
+            position: absolute;
+            pointer-events: auto;        /* make them clickable */
+            font-weight: 700;
+            text-align: center;
+            transform: translate(-50%, -50%); /* center on x/y point */
+            line-height: 1;
+            transition: color 0.15s;
+            /* NO background, NO border – completely transparent */
+            background: transparent;
+            /* Default colour (state 0) */
+            color: #ffffff;
+            text-shadow: 0 0 25px rgba(0, 0, 0, 0.95), 0 2px 10px rgba(0, 0, 0, 0.9);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            /* Size is set by JS, but we give a fallback */
+            font-size: 48px;
+            width: 80px;
+            height: 80px;
+        }
+
+        /* State 1 (toggled) – gold colour */
+        .number-item.state-1 {
+            color: #ffd93d;
+            text-shadow: 0 0 40px rgba(255, 217, 61, 0.5), 0 0 20px rgba(0, 0, 0, 0.9);
+        }
+
+        /* ── Controls ── */
+        #controls {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            background: rgba(22, 33, 62, 0.8);
+            backdrop-filter: blur(6px);
+            padding: 12px 28px;
+            border-radius: 50px;
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+            border: 1px solid #2a3a5e;
+            pointer-events: auto;
+        }
+
+        #controls button {
+            background: #e94560;
+            border: none;
+            color: #fff;
+            font-weight: 600;
+            font-size: 0.95rem;
+            padding: 8px 24px;
+            border-radius: 40px;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.1s;
+            box-shadow: 0 4px 0 #a12a3f;
+            letter-spacing: 0.5px;
+        }
+        #controls button:hover {
+            background: #ff6b81;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 0 #a12a3f;
+        }
+        #controls button:active {
+            transform: translateY(2px);
+            box-shadow: 0 2px 0 #a12a3f;
+        }
+
+        #controls span {
+            color: #b0c4de;
+            font-size: 0.9rem;
+        }
+
+        @media (max-width: 600px) {
+            #controls {
+                padding: 10px 16px;
+                gap: 12px;
+                flex-wrap: wrap;
+                justify-content: center;
+                bottom: 16px;
+                border-radius: 30px;
+            }
+            #controls button {
+                font-size: 0.8rem;
+                padding: 6px 16px;
+            }
+            .number-item {
+                width: 60px;
+                height: 60px;
+                font-size: 36px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="numbers-container"></div>
+
+    <div id="controls">
+        <button id="resetBtn">⟳ Reset All</button>
+        <span>Click a number to toggle 0 / 1</span>
+    </div>
+
+    <script>
+        // ================================================================
+        //  CONFIGURATION – EDIT THESE VALUES TO CUSTOMIZE THE PUZZLE
+        // ================================================================
+
+        // 1. Overall scale of ALL numbers (change this to resize them)
+        const SCALE = 1.0;   // e.g., 0.8 = smaller, 1.5 = larger
+
+        // 2. Positions for each of the 36 numbers (6 columns × 6 rows).
+        //    x = % from the left edge of the screen
+        //    y = % from the top edge of the screen
+        //    Edit the numbers below to align each tile with your picture.
+        //    Tile 0 is top‑left, Tile 35 is bottom‑right.
+        const POSITIONS = [
+            // Row 1 (y ≈ 12)
+            { x: 12, y: 12 },  // Tile  0
+            { x: 25, y: 12 },  // Tile  1
+            { x: 38, y: 12 },  // Tile  2
+            { x: 51, y: 12 },  // Tile  3
+            { x: 64, y: 12 },  // Tile  4
+            { x: 77, y: 12 },  // Tile  5
+
+            // Row 2 (y ≈ 26)
+            { x: 12, y: 26 },  // Tile  6
+            { x: 25, y: 26 },  // Tile  7
+            { x: 38, y: 26 },  // Tile  8
+            { x: 51, y: 26 },  // Tile  9
+            { x: 64, y: 26 },  // Tile 10
+            { x: 77, y: 26 },  // Tile 11
+
+            // Row 3 (y ≈ 40)
+            { x: 12, y: 40 },  // Tile 12
+            { x: 25, y: 40 },  // Tile 13
+            { x: 38, y: 40 },  // Tile 14
+            { x: 51, y: 40 },  // Tile 15
+            { x: 64, y: 40 },  // Tile 16
+            { x: 77, y: 40 },  // Tile 17
+
+            // Row 4 (y ≈ 54)
+            { x: 12, y: 54 },  // Tile 18
+            { x: 25, y: 54 },  // Tile 19
+            { x: 38, y: 54 },  // Tile 20
+            { x: 51, y: 54 },  // Tile 21
+            { x: 64, y: 54 },  // Tile 22
+            { x: 77, y: 54 },  // Tile 23
+
+            // Row 5 (y ≈ 68)
+            { x: 12, y: 68 },  // Tile 24
+            { x: 25, y: 68 },  // Tile 25
+            { x: 38, y: 68 },  // Tile 26
+            { x: 51, y: 68 },  // Tile 27
+            { x: 64, y: 68 },  // Tile 28
+            { x: 77, y: 68 },  // Tile 29
+
+            // Row 6 (y ≈ 82)
+            { x: 12, y: 82 },  // Tile 30
+            { x: 25, y: 82 },  // Tile 31
+            { x: 38, y: 82 },  // Tile 32
+            { x: 51, y: 82 },  // Tile 33
+            { x: 64, y: 82 },  // Tile 34
+            { x: 77, y: 82 }   // Tile 35
+        ];
+
+        // ================================================================
+        //  END OF CONFIGURATION – DO NOT EDIT BELOW THIS LINE
+        // ================================================================
+
+        const container = document.getElementById('numbers-container');
+        const total = POSITIONS.length;
+        const state = new Array(total).fill(0);
+
+        // ─── Render numbers ──────────────────────────────────────────────
+        function render() {
+            container.innerHTML = '';
+            const baseSize = 48; // px
+            const scaledSize = baseSize * SCALE;
+
+            POSITIONS.forEach((pos, index) => {
+                const el = document.createElement('div');
+                el.className = `number-item state-${state[index]}`;
+                el.textContent = state[index];
+
+                // Apply size
+                el.style.fontSize = scaledSize + 'px';
+                el.style.width = (scaledSize * 1.6) + 'px';
+                el.style.height = (scaledSize * 1.6) + 'px';
+
+                // Apply position (percentages from config)
+                el.style.left = pos.x + '%';
+                el.style.top = pos.y + '%';
+
+                // Click to toggle
+                el.addEventListener('click', function(e) {
+                    state[index] = state[index] === 0 ? 1 : 0;
+                    this.textContent = state[index];
+                    this.className = `number-item state-${state[index]}`;
+                });
+
+                container.appendChild(el);
+            });
+        }
+
+        // ─── Reset values (keeps positions) ────────────────────────────
+        function resetValues() {
+            for (let i = 0; i < state.length; i++) {
+                state[i] = 0;
+            }
+            const items = container.querySelectorAll('.number-item');
+            items.forEach((el, idx) => {
+                el.textContent = '0';
+                el.className = 'number-item state-0';
+            });
+        }
+
+        // ─── Init ────────────────────────────────────────────────────────
+        render();
+
+        document.getElementById('resetBtn').addEventListener('click', resetValues);
+
+        // Keyboard shortcut: press 'r' to reset
+        window.addEventListener('keydown', function(e) {
+            if ((e.key === 'r' || e.key === 'R') && !e.ctrlKey && !e.metaKey) {
+                resetValues();
+                e.preventDefault();
+            }
+        });
+    </script>
+</body>
+</html>
