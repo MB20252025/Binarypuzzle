@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>6×6 Binary Puzzle – Screw Mechanics</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            width: 100vw;
+            min-height: 100vh;
+            overflow-y: auto;
+            font-family: 'Segoe UI', Roboto, sans-serif;
+            user-select: none;
+            background-image: url('bcodeface.png');
+            background-size: 100% auto;
+            background-repeat: no-repeat;
+            background-position: top left;
+            background-color: #1a1a2e;
+        }
+
+        #overlay {
+            position: relative;
+            width: 100%;
+            min-height: inherit;
+            pointer-events: none;
+        }
+
+        .extra-image {
+            position: absolute;
+            object-fit: contain;
+            pointer-events: none;
+        }
+
+        /* ── Layer stacking ── */
+        .layer-other {
+            z-index: 1;          /* greencut, redbluecut */
+        }
+        .layer-solution {
+            z-index: 2;          /* solutionbox */
+        }
+        .layer-above {
+            z-index: 2.5;        /* bluegreen, green – ABOVE solutionbox, BELOW hole */
+        }
+
+        .cover {
+            z-index: 3;          /* hole – covers everything below */
+            transition: top 0.8s ease, opacity 0.8s;
+        }
+        .cover.dropped {
+            top: 110% !important;
+            opacity: 0;
+        }
+
+        .screw {
+            pointer-events: auto;
+            cursor: pointer;
+            transition: transform 0.3s ease, opacity 0.5s, top 0.5s;
+            z-index: 5;          /* screws – on top of everything */
+        }
+        .screw.dropped {
+            pointer-events: none;
+            opacity: 0;
+            top: 110% !important;
+        }
+
+        .number-item {
+            position: absolute;
+            pointer-events: auto;
+            z-index: 10;
+            font-weight: 700;
+            text-align: center;
+            transform: translate(-50%, -50%);
+            line-height: 1;
+            transition: color 0.15s;
+            background: transparent;
+            color: #ffffff;
+            text-shadow: 0 0 25px rgba(0, 0, 0, 0.95), 0 2px 10px rgba(0, 0, 0, 0.9);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 48px;
+            width: 80px;
+            height: 80px;
+        }
+        .number-item.state-1 {
+            color: #ffd93d;
+            text-shadow: 0 0 40px rgba(255, 217, 61, 0.5), 0 0 20px rgba(0, 0, 0, 0.9);
+        }
+
+        @media (max-width: 600px) {
+            .number-item {
+                width: 60px;
+                height: 60px;
+                font-size: 36px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="overlay"></div>
+
+    <script>
+        // ================================================================
+        //  CONFIGURATION
+        // ================================================================
+
+        const SCALE = 1.0;
+
+        const POSITIONS = [
+            { x: 18, y: 25 },  { x: 31, y: 25 },  { x: 44, y: 25 },  { x: 57, y: 25 },  { x: 70, y: 25 },  { x: 83, y: 25 },
+            { x: 18, y: 32 },  { x: 31, y: 32 },  { x: 44, y: 32 },  { x: 57, y: 32 },  { x: 70, y: 32 },  { x: 83, y: 32 },
+            { x: 18, y: 38.5 },{ x: 31, y: 38.5 },{ x: 44, y: 38.5 },{ x: 57, y: 38.5 },{ x: 70, y: 38.5 },{ x: 83, y: 38.5 },
+            { x: 18, y: 45.5 },{ x: 31, y: 45.5 },{ x: 44, y: 45.5 },{ x: 57, y: 45.5 },{ x: 70, y: 45.5 },{ x: 83, y: 45.5 },
+            { x: 18, y: 52 },  { x: 31, y: 52 },  { x: 44, y: 52 },  { x: 57, y: 52 },  { x: 70, y: 52 },  { x: 83, y: 52 },
+            { x: 18, y: 58.5 },{ x: 31, y: 58.5 },{ x: 44, y: 58.5 },{ x: 57, y: 58.5 },{ x: 70, y: 58.5 },{ x: 83, y: 58.5 }
+        ];
+
+        // ─── Layers (bottom to top) ──────────────────────────────────────
+        const LAYERS = [
+            // Bottom layers
+            { src: 'greencut.png',    x: 40, y: 85, width: 25, height: 'auto', cls: 'layer-other' },
+            { src: 'redbluecut.png',  x: 40, y: 85, width: 25, height: 'auto', cls: 'layer-other' },
+            // Solution box
+            { src: 'solutionbox.png', x: 40, y: 85, width: 25, height: 'auto', cls: 'layer-solution' },
+            // NEW – placed side‑by‑side inside the solution box area
+            // Adjust x, y, and width to fine‑tune their positions
+            { src: 'bluegreen.png',   x: 33, y: 85, width: 12, height: 'auto', cls: 'layer-above' },
+            { src: 'green.png',       x: 48, y: 85, width: 12, height: 'auto', cls: 'layer-above' },
+        ];
+
+        // Cover – hole.png (on top, hidden until screws drop)
+        const COVER = { src: 'hole.png', x: 40, y: 85, width: 25, height: 'auto', cls: 'cover' };
+
+        const SCREWS = [
+            { src: 'screw1.png', x: 42.5, y: 86, width: 7.3, height: 'auto' },
+            { src: 'screw2.png', x: 55,   y: 86, width: 7.3, height: 'auto' },
+            { src: 'screw3.png', x: 42.5, y: 91, width: 7.3, height: 'auto' },
+            { src: 'screw4.png', x: 55,   y: 91, width: 7.3, height: 'auto' },
+        ];
+
+        // ================================================================
+
+        const overlay = document.getElementById('overlay');
+        const total = POSITIONS.length;
+        const state = new Array(total).fill(0);
+        const screwStates = SCREWS.map(() => ({ clicks: 0, element: null }));
+        let coverElement = null;
+
+        function setBodyHeight() {
+            const img = new Image();
+            img.onload = function() {
+                const aspect = img.width / img.height;
+                const heightPx = window.innerWidth / aspect;
+                document.body.style.minHeight = heightPx + 'px';
+                overlay.style.minHeight = heightPx + 'px';
+            };
+            img.src = 'bcodeface.png';
+        }
+
+        function renderImages() {
+            LAYERS.forEach((data) => {
+                const img = document.createElement('img');
+                img.src = data.src;
+                img.className = `extra-image ${data.cls || ''}`;
+                img.style.left = data.x + '%';
+                img.style.top = data.y + '%';
+                img.style.width = (data.width !== 'auto' ? data.width + '%' : 'auto');
+                img.style.height = (data.height !== 'auto' ? data.height + '%' : 'auto');
+                overlay.appendChild(img);
+            });
+
+            coverElement = document.createElement('img');
+            coverElement.src = COVER.src;
+            coverElement.className = `extra-image ${COVER.cls || ''}`;
+            coverElement.style.left = COVER.x + '%';
+            coverElement.style.top = COVER.y + '%';
+            coverElement.style.width = (COVER.width !== 'auto' ? COVER.width + '%' : 'auto');
+            coverElement.style.height = (COVER.height !== 'auto' ? COVER.height + '%' : 'auto');
+            coverElement.id = 'cover-image';
+            overlay.appendChild(coverElement);
+
+            SCREWS.forEach((data, index) => {
+                const img = document.createElement('img');
+                img.src = data.src;
+                img.className = 'extra-image screw';
+                img.style.left = data.x + '%';
+                img.style.top = data.y + '%';
+                img.style.width = (data.width !== 'auto' ? data.width + '%' : 'auto');
+                img.style.height = (data.height !== 'auto' ? data.height + '%' : 'auto');
+                img.dataset.index = index;
+                screwStates[index].element = img;
+                img.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    handleScrewClick(index);
+                });
+                overlay.appendChild(img);
+            });
+        }
+
+        function handleScrewClick(index) {
+            const state = screwStates[index];
+            if (!state || state.clicks >= 4) return;
+            state.clicks++;
+            const element = state.element;
+            element.style.transform = `rotate(${state.clicks * 90}deg)`;
+            if (state.clicks >= 4) {
+                element.classList.add('dropped');
+                checkAllScrewsDropped();
+            }
+        }
+
+        function checkAllScrewsDropped() {
+            const allDropped = screwStates.every(s => s.clicks >= 4);
+            if (allDropped && coverElement) {
+                coverElement.classList.add('dropped');
+            }
+        }
+
+        function renderNumbers() {
+            const baseSize = 48;
+            const scaledSize = baseSize * SCALE;
+            POSITIONS.forEach((pos, index) => {
+                const el = document.createElement('div');
+                el.className = `number-item state-${state[index]}`;
+                el.textContent = state[index];
+                el.style.fontSize = scaledSize + 'px';
+                el.style.width = (scaledSize * 1.6) + 'px';
+                el.style.height = (scaledSize * 1.6) + 'px';
+                el.style.left = pos.x + '%';
+                el.style.top = pos.y + '%';
+                el.addEventListener('click', function(e) {
+                    state[index] = state[index] === 0 ? 1 : 0;
+                    this.textContent = state[index];
+                    this.className = `number-item state-${state[index]}`;
+                });
+                overlay.appendChild(el);
+            });
+        }
+
+        // ─── Init ──────────────────────────────────────────────────────
+        setBodyHeight();
+        renderImages();
+        renderNumbers();
+        window.addEventListener('resize', setBodyHeight);
+    </script>
+</body>
+</html>
