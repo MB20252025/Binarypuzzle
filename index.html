@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Binary Puzzle – Detective Logic</title>
+    <style>
+        /* ===== GLOBAL SCALE CONTROL ===== */
+        :root {
+            --button-scale: 1.0;           /* controls verify button + label */
+            
+            /* ── ACCESS BUTTON – independent width & height ── */
+            --access-width: 500px;          /* ← change width only */
+            --access-height: auto;          /* ← change height only (or use a number like 300px) */
+        }
+
+        /* ===== Global reset & background ===== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            width: 100vw;
+            min-height: 100vh;
+            overflow-y: auto;
+            font-family: 'Segoe UI', Roboto, sans-serif;
+            user-select: none;
+            background-image: url('bcodeface.png');
+            background-size: 100% auto;
+            background-repeat: no-repeat;
+            background-position: top left;
+            background-color: #1a1a2e;
+        }
+        #overlay {
+            position: relative;
+            width: 100%;
+            min-height: inherit;
+            pointer-events: none;
+        }
+
+        /* ===== Base image style ===== */
+        .extra-image {
+            position: absolute;
+            object-fit: contain;
+            pointer-events: none;
+        }
+
+        /* ===== Layer z‑indexes ===== */
+        .layer-other    { z-index: 1; }
+        .layer-solution { z-index: 2; }
+        .layer-above    { z-index: 3; }
+        .cover          { z-index: 4; transition: top 0.8s ease, opacity 0.8s; }
+        .cover.dropped  { top: 110% !important; opacity: 0; }
+        .screw          { z-index: 5; pointer-events: auto; cursor: pointer; transition: transform 0.3s ease, opacity 0.5s, top 0.5s; }
+        .screw.dropped  { pointer-events: none; opacity: 0; top: 110% !important; }
+
+        /* ===== Numbers (clickable grid tiles) ===== */
+        .number-item {
+            position: absolute;
+            pointer-events: auto;
+            z-index: 6;
+            font-weight: 700;
+            text-align: center;
+            transform: translate(-50%, -50%);
+            line-height: 1;
+            transition: color 0.15s;
+            background: transparent;
+            color: #ffffff;
+            text-shadow: 0 0 25px rgba(0, 0, 0, 0.95), 0 2px 10px rgba(0, 0, 0, 0.9);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 48px;
+            width: 80px;
+            height: 80px;
+        }
+        .number-item.locked {
+            cursor: not-allowed;
+            color: #000000;
+            text-shadow: none;
+            opacity: 0.9;
+        }
+        .number-item.state-1 {
+            color: #ffd93d;
+            text-shadow: 0 0 40px rgba(255, 217, 61, 0.5), 0 0 20px rgba(0, 0, 0, 0.9);
+        }
+        .number-item.locked.state-1 {
+            color: #000000;
+            text-shadow: none;
+        }
+
+        /* ===== Verify button (image) ===== */
+        #verifyBtn {
+            position: absolute;
+            z-index: 15;
+            pointer-events: auto;
+            cursor: pointer;
+            left: 50%;
+            top: 66%;
+            width: calc(140px * var(--button-scale));
+            height: auto;
+            transform: translateX(-50%);
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            transition: transform 0.1s, filter 0.1s;
+        }
+        #verifyBtn:active {
+            transform: translateX(-50%) scale(0.94);
+            filter: brightness(0.85);
+        }
+        #verifyBtn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* ===== "Verify" text label ===== */
+        #verifyLabel {
+            position: absolute;
+            z-index: 16;
+            pointer-events: none;
+            font-size: calc(1.8rem * var(--button-scale));
+            font-weight: 700;
+            color: #ffffff;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.9), 0 0 20px rgba(0,0,0,0.7);
+            left: 50%;
+            top: 65.5%;
+            transform: translate(-50%, -50%);
+            letter-spacing: 3px;
+        }
+
+        /* ===== Message ===== */
+        #puzzleMessage {
+            position: absolute;
+            z-index: 15;
+            pointer-events: none;
+            font-size: 2rem;
+            font-weight: 700;
+            text-align: center;
+            color: #fff;
+            text-shadow: 0 0 20px rgba(0,0,0,0.9), 0 0 40px rgba(0,0,0,0.8);
+            min-height: 50px;
+            width: 100%;
+            left: 50%;
+            top: 60%;
+            transform: translateX(-50%);
+        }
+        .granted { color: #87f5b2; text-shadow: 0 0 20px #00cc66, 0 0 40px #00cc66; animation: unlockPulse 0.8s; }
+        .denied { color: #ff8a8a; text-shadow: 0 0 20px #cc3333, 0 0 40px #cc3333; }
+        .analyzing-text { color: #f5e56b; text-shadow: 0 0 20px #ffd966, 0 0 40px #ffd966; }
+        @keyframes unlockPulse {
+            0% { transform: translateX(-50%) scale(1); }
+            50% { transform: translateX(-50%) scale(1.05); text-shadow: 0 0 40px #33ee88; }
+        }
+
+        /* ===== 4 LEDs ===== */
+        .led {
+            position: absolute;
+            z-index: 15;
+            pointer-events: none;
+            width: 16px;
+            height: 16px;
+            background: #2b3a44;
+            border-radius: 50%;
+            box-shadow: inset 0 0 4px black;
+            transition: background 0.3s, box-shadow 0.3s;
+        }
+        .led.active {
+            background: #44dd88;
+            box-shadow: 0 0 16px #22ee88, 0 0 32px #22ee88;
+        }
+        #led1 { left: 46%; top: 57%; }
+        #led2 { left: 48.5%; top: 57%; }
+        #led3 { left: 51%; top: 57%; }
+        #led4 { left: 53.5%; top: 57%; }
+
+        /* ===== ACCESS BUTTON – independent width & height ===== */
+        #accessButton {
+            position: absolute;
+            z-index: 12;
+            pointer-events: none;
+            left: 50%;
+            top: 78%;
+            transform: translateX(-50%);
+            
+            /* ── Use variables to control each dimension ── */
+            width: var(--access-width);
+            height: var(--access-height);
+            
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+        }
+
+        /* ===== Mobile adjustments ===== */
+        @media (max-width: 600px) {
+            .number-item { width: 60px; height: 60px; font-size: 36px; }
+            #verifyBtn { width: calc(100px * var(--button-scale)); top: 64%; }
+            #verifyLabel { font-size: calc(1.2rem * var(--button-scale)); top: 63.5%; }
+            #puzzleMessage { font-size: 1.4rem; top: 58%; }
+            #led1 { left: 43%; top: 55%; }
+            #led2 { left: 46%; top: 55%; }
+            #led3 { left: 49%; top: 55%; }
+            #led4 { left: 52%; top: 55%; }
+            
+            /* ── Mobile width & height ── */
+            :root {
+                --access-width: 300px;
+                --access-height: auto;
+            }
+            #accessButton { top: 76%; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="overlay"></div>
+
+    <script>
+        // ================================================================
+        //  1. PUZZLE LOGIC
+        // ================================================================
+
+        const SIZE = 6;
+        const EMPTY = -1;
+        const CIRCLE = 0;
+        const TRIANGLE = 1;
+
+        const cluePattern = [
+            "0.....",
+            "......",
+            "1.....",
+            ".0..0.",
+            "1..0..",
+            ".0...0"
+        ];
+        const solutionPattern = [
+            "001011",
+            "010011",
+            "110100",
+            "001101",
+            "110010",
+            "101100"
+        ];
+
+        function patternToGrid(pattern) {
+            const grid = Array(SIZE).fill().map(() => Array(SIZE).fill(EMPTY));
+            for (let r = 0; r < SIZE; r++) {
+                const rowStr = pattern[r];
+                for (let c = 0; c < SIZE; c++) {
+                    const ch = rowStr[c];
+                    if (ch === '0') grid[r][c] = CIRCLE;
+                    else if (ch === '1') grid[r][c] = TRIANGLE;
+                }
+            }
+            return grid;
+        }
+
+        const clueGrid = patternToGrid(cluePattern);
+        const solutionGrid = patternToGrid(solutionPattern);
+        const lockedGrid = Array(SIZE).fill().map((_, r) =>
+            Array(SIZE).fill().map((_, c) => clueGrid[r][c] !== EMPTY)
+        );
+
+        let currentGrid = clueGrid.map(row => [...row]);
+        let puzzleSolved = false;
+
+        const overlay = document.getElementById('overlay');
+
+        // ---- Create UI elements ----
+        const messageDiv = document.createElement('div');
+        messageDiv.id = 'puzzleMessage';
+        overlay.appendChild(messageDiv);
+
+        const ledIds = ['led1', 'led2', 'led3', 'led4'];
+        const leds = [];
+        ledIds.forEach(id => {
+            const led = document.createElement('span');
+            led.className = 'led';
+            led.id = id;
+            overlay.appendChild(led);
+            leds.push(led);
+        });
+
+        const verifyImg = document.createElement('img');
+        verifyImg.src = 'verify.png';
+        verifyImg.id = 'verifyBtn';
+        verifyImg.alt = 'VERIFY';
+        overlay.appendChild(verifyImg);
+
+        const verifyLabel = document.createElement('div');
+        verifyLabel.id = 'verifyLabel';
+        verifyLabel.textContent = 'VERIFY';
+        overlay.appendChild(verifyLabel);
+
+        const accessImg = document.createElement('img');
+        accessImg.src = 'accessbutton.png';
+        accessImg.id = 'accessButton';
+        accessImg.alt = 'Access Button';
+        overlay.appendChild(accessImg);
+
+        // ---- Render numbers ----
+        const POSITIONS = [
+            { x: 18, y: 25 },  { x: 31, y: 25 },  { x: 44, y: 25 },  { x: 57, y: 25 },  { x: 70, y: 25 },  { x: 83, y: 25 },
+            { x: 18, y: 32 },  { x: 31, y: 32 },  { x: 44, y: 32 },  { x: 57, y: 32 },  { x: 70, y: 32 },  { x: 83, y: 32 },
+            { x: 18, y: 38.5 },{ x: 31, y: 38.5 },{ x: 44, y: 38.5 },{ x: 57, y: 38.5 },{ x: 70, y: 38.5 },{ x: 83, y: 38.5 },
+            { x: 18, y: 45.5 },{ x: 31, y: 45.5 },{ x: 44, y: 45.5 },{ x: 57, y: 45.5 },{ x: 70, y: 45.5 },{ x: 83, y: 45.5 },
+            { x: 18, y: 52 },  { x: 31, y: 52 },  { x: 44, y: 52 },  { x: 57, y: 52 },  { x: 70, y: 52 },  { x: 83, y: 52 },
+            { x: 18, y: 58.5 },{ x: 31, y: 58.5 },{ x: 44, y: 58.5 },{ x: 57, y: 58.5 },{ x: 70, y: 58.5 },{ x: 83, y: 58.5 }
+        ];
+
+        const SCALE = 1.0;
+
+        function renderNumbers() {
+            const baseSize = 48;
+            const scaledSize = baseSize * SCALE;
+            document.querySelectorAll('.number-item').forEach(el => el.remove());
+
+            POSITIONS.forEach((pos, index) => {
+                const r = Math.floor(index / SIZE);
+                const c = index % SIZE;
+                const val = currentGrid[r][c];
+                const isLocked = lockedGrid[r][c];
+
+                const el = document.createElement('div');
+                el.className = 'number-item';
+                if (isLocked) el.classList.add('locked');
+                el.textContent = (val === EMPTY) ? '' : (val === CIRCLE ? '0' : '1');
+                if (val === TRIANGLE) el.classList.add('state-1');
+
+                el.style.fontSize = scaledSize + 'px';
+                el.style.width = (scaledSize * 1.6) + 'px';
+                el.style.height = (scaledSize * 1.6) + 'px';
+                el.style.left = pos.x + '%';
+                el.style.top = pos.y + '%';
+
+                el.dataset.row = r;
+                el.dataset.col = c;
+
+                el.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    const row = parseInt(this.dataset.row);
+                    const col = parseInt(this.dataset.col);
+                    if (lockedGrid[row][col] || puzzleSolved) return;
+                    let newVal = currentGrid[row][col];
+                    if (newVal === EMPTY) newVal = CIRCLE;
+                    else if (newVal === CIRCLE) newVal = TRIANGLE;
+                    else if (newVal === TRIANGLE) newVal = EMPTY;
+                    currentGrid[row][col] = newVal;
+                    this.textContent = (newVal === EMPTY) ? '' : (newVal === CIRCLE ? '0' : '1');
+                    this.classList.toggle('state-1', newVal === TRIANGLE);
+                });
+
+                overlay.appendChild(el);
+            });
+        }
+
+        // ---- Verify logic ----
+        function checkSolution() {
+            for (let r = 0; r < SIZE; r++) {
+                for (let c = 0; c < SIZE; c++) {
+                    if (currentGrid[r][c] !== solutionGrid[r][c]) return false;
+                }
+            }
+            return true;
+        }
+
+        function grantAccess() {
+            puzzleSolved = true;
+            messageDiv.innerHTML = '<span class="granted">🔓 ACCESS GRANTED</span>';
+            leds.forEach((led, i) => setTimeout(() => led.classList.add('active'), i * 100));
+            if (window.unlockVault) window.unlockVault();
+        }
+
+        function denyAccess() {
+            messageDiv.innerHTML = '<span class="denied">⛔ ACCESS DENIED</span>';
+        }
+
+        verifyImg.addEventListener('click', function() {
+            if (this.disabled || puzzleSolved) return;
+            this.disabled = true;
+            messageDiv.innerHTML = '<span class="analyzing-text">🔍 ANALYZING…</span>';
+            setTimeout(() => {
+                const correct = checkSolution();
+                if (correct) grantAccess();
+                else denyAccess();
+                this.disabled = false;
+            }, 800);
+        });
+
+        // ---- Auto-solve ----
+        function autoSolvePuzzle() {
+            if (puzzleSolved) return;
+            for (let r = 0; r < SIZE; r++) {
+                for (let c = 0; c < SIZE; c++) {
+                    currentGrid[r][c] = solutionGrid[r][c];
+                }
+            }
+            renderNumbers();
+            grantAccess();
+        }
+        window.autoSolvePuzzle = autoSolvePuzzle;
+
+        renderNumbers();
+
+        // ================================================================
+        //  2. IMAGES, SCREWS, HOLE
+        // ================================================================
+
+        const LAYERS = [
+            { src: 'greencut.png',    x: 40, y: 85, width: 25, height: 'auto', cls: 'layer-other' },
+            { src: 'redbluecut.png',  x: 40, y: 85, width: 25, height: 'auto', cls: 'layer-other' },
+            { src: 'solutionbox.png', x: 40, y: 85, width: 25, height: 'auto', cls: 'layer-solution' },
+            { src: 'bluegreen.png',   x: 42.3, y: 87, width: 20.3, height: 'auto', cls: 'layer-above' },
+            { src: 'green.png',       x: 42, y: 91.5, width: 20.9, height: 'auto', cls: 'layer-above' },
+        ];
+
+        const COVER = { src: 'hole.png', x: 1, y: 85, width: 25, height: 'auto', cls: 'cover' };
+        const SCREWS = [
+            { src: 'screw1.png', x: 1, y: 86, width: 7.3, height: 'auto' },
+            { src: 'screw2.png', x: 1, y: 86, width: 7.3, height: 'auto' },
+            { src: 'screw3.png', x: 1, y: 91, width: 7.3, height: 'auto' },
+            { src: 'screw4.png', x: 1, y: 91, width: 7.3, height: 'auto' },
+        ];
+
+        function renderImages() {
+            LAYERS.forEach((data) => {
+                const img = document.createElement('img');
+                img.src = data.src;
+                img.className = `extra-image ${data.cls || ''}`;
+                img.style.left = data.x + '%';
+                img.style.top = data.y + '%';
+                img.style.width = (data.width !== 'auto' ? data.width + '%' : 'auto');
+                img.style.height = (data.height !== 'auto' ? data.height + '%' : 'auto');
+                overlay.appendChild(img);
+                if (data.src === 'green.png') {
+                    img.id = 'green-img';
+                    img.style.pointerEvents = 'none';
+                }
+                if (data.src === 'bluegreen.png') {
+                    img.id = 'bluegreen-img';
+                }
+            });
+
+            const coverImg = document.createElement('img');
+            coverImg.src = COVER.src;
+            coverImg.className = `extra-image ${COVER.cls || ''}`;
+            coverImg.style.left = COVER.x + '%';
+            coverImg.style.top = COVER.y + '%';
+            coverImg.style.width = (COVER.width !== 'auto' ? COVER.width + '%' : 'auto');
+            coverImg.style.height = (COVER.height !== 'auto' ? COVER.height + '%' : 'auto');
+            coverImg.id = 'cover-image';
+            overlay.appendChild(coverImg);
+
+            const screwElements = [];
+            SCREWS.forEach((data, index) => {
+                const img = document.createElement('img');
+                img.src = data.src;
+                img.className = 'extra-image screw';
+                img.style.left = data.x + '%';
+                img.style.top = data.y + '%';
+                img.style.width = (data.width !== 'auto' ? data.width + '%' : 'auto');
+                img.style.height = (data.height !== 'auto' ? data.height + '%' : 'auto');
+                img.dataset.index = index;
+                img.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    handleScrewClick(index);
+                });
+                overlay.appendChild(img);
+                screwElements.push(img);
+            });
+
+            window.screwElements = screwElements;
+            window.coverElement = coverImg;
+            window.screwClicks = [0, 0, 0, 0];
+        }
+
+        function handleScrewClick(index) {
+            const clicks = window.screwClicks;
+            if (clicks[index] >= 4) return;
+            clicks[index]++;
+            const element = window.screwElements[index];
+            element.style.transform = `rotate(${clicks[index] * 90}deg)`;
+            if (clicks[index] >= 4) {
+                element.classList.add('dropped');
+                checkAllScrewsDropped();
+            }
+        }
+
+        function checkAllScrewsDropped() {
+            const allDropped = window.screwClicks.every(c => c >= 4);
+            if (allDropped && window.coverElement) {
+                window.coverElement.classList.add('dropped');
+                const greenImg = document.getElementById('green-img');
+                if (greenImg) {
+                    greenImg.style.pointerEvents = 'auto';
+                    greenImg.style.cursor = 'pointer';
+                    greenImg.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        if (window.autoSolvePuzzle) window.autoSolvePuzzle();
+                    });
+                }
+                const bluegreenImg = document.getElementById('bluegreen-img');
+                if (bluegreenImg) {
+                    bluegreenImg.style.pointerEvents = 'auto';
+                    bluegreenImg.style.cursor = 'pointer';
+                    bluegreenImg.addEventListener('click', function() {
+                        const redbluecut = document.querySelector('img[src="redbluecut.png"]');
+                        if (redbluecut) redbluecut.style.zIndex = 11;
+                    });
+                }
+            }
+        }
+
+        function setBodyHeight() {
+            const img = new Image();
+            img.onload = function() {
+                const aspect = img.width / img.height;
+                const heightPx = window.innerWidth / aspect;
+                document.body.style.minHeight = heightPx + 'px';
+                overlay.style.minHeight = heightPx + 'px';
+            };
+            img.src = 'bcodeface.png';
+        }
+
+        function unlockVault() {
+            console.log('VAULT UNLOCKED!');
+        }
+        window.unlockVault = unlockVault;
+
+        setBodyHeight();
+        renderImages();
+    </script>
+</body>
+</html>
