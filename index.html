@@ -7,7 +7,7 @@
     <style>
         /* ===== GLOBAL SCALE CONTROL ===== */
         :root {
-            --access-width: 75cqi;       /* now relative to container */
+            --access-width: 75cqi;
             --access-height: auto;
         }
 
@@ -167,10 +167,10 @@
             50% { transform: translateX(-50%) scale(1.05); text-shadow: 0 0 40px #33ee88; }
         }
 
-        /* ===== LEDs – now super high z‑index + red state ===== */
+        /* ===== LEDs – always on top + red state ===== */
         .led {
             position: absolute;
-            z-index: 100;               /* always on top */
+            z-index: 100;
             pointer-events: none;
             width: 1.2cqi;
             height: 1.2cqi;
@@ -206,9 +206,7 @@
             box-shadow: 0 4px 12px rgba(0,0,0,0.4);
         }
 
-        /* ================================================================
-           RESPONSIVE: mobile overrides
-           ================================================================ */
+        /* ===== RESPONSIVE ===== */
         @media (max-width: 600px) {
             #puzzle-container {
                 max-width: 100%;
@@ -373,31 +371,66 @@
             return true;
         }
 
-        // Reset LEDs (remove both active and denied)
+        // ================================================================
+        //  DENY TIMER – GENERATION‑SAFE REPLACEMENT
+        // ================================================================
+
+        let deniedTimer = null;
+        let denyGeneration = 0;
+
+        function clearDeniedTimer() {
+            if (deniedTimer) {
+                clearTimeout(deniedTimer);
+                deniedTimer = null;
+            }
+            denyGeneration++; // invalidates any in‑flight timeout
+        }
+
         function resetLEDs() {
+            clearDeniedTimer();
             leds.forEach(led => {
                 led.classList.remove('active', 'denied');
             });
+            if (messageDiv.querySelector('.denied')) {
+                messageDiv.innerHTML = '';
+            }
         }
 
         function grantAccess() {
             puzzleSolved = true;
+            clearDeniedTimer();
             messageDiv.innerHTML = '<span class="granted">🔓 ACCESS GRANTED</span>';
-            resetLEDs();
+            leds.forEach(led => led.classList.remove('active', 'denied'));
             leds.forEach((led, i) => setTimeout(() => led.classList.add('active'), i * 100));
             if (window.unlockVault) window.unlockVault();
         }
 
         function denyAccess() {
+            clearDeniedTimer();
+            const myGeneration = denyGeneration;
+
+            leds.forEach(led => led.classList.remove('active', 'denied'));
+
             messageDiv.innerHTML = '<span class="denied">⛔ ACCESS DENIED</span>';
-            resetLEDs();
             leds.forEach(led => led.classList.add('denied'));
+
+            console.log('🔴 ACCESS DENIED – timer started (3s), gen', myGeneration);
+
+            deniedTimer = setTimeout(() => {
+                console.log('⏱️ 3s passed – clearing deny state, gen', myGeneration);
+                if (myGeneration === denyGeneration) {
+                    messageDiv.innerHTML = '';
+                    leds.forEach(led => led.classList.remove('denied'));
+                }
+                deniedTimer = null;
+            }, 3000);
         }
 
+        // ---- Verify button ----
         verifyImg.addEventListener('click', function() {
             if (this.disabled || puzzleSolved) return;
             this.disabled = true;
-            resetLEDs();                         // clear previous LED states
+            resetLEDs();
             messageDiv.innerHTML = '<span class="analyzing-text">🔍 ANALYZING…</span>';
             setTimeout(() => {
                 const correct = checkSolution();
