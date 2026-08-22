@@ -43,12 +43,13 @@
             background-position: top left;
             background-color: #1a1a2e;
             margin: 0 auto;
+            /* aspect-ratio will be set by JavaScript based on the image */
         }
 
         #overlay {
             position: relative;
             width: 100%;
-            min-height: inherit;
+            height: 100%;          /* fill the container */
             pointer-events: none;
         }
 
@@ -372,7 +373,7 @@
         }
 
         // ================================================================
-        //  DENY TIMER – GENERATION‑SAFE REPLACEMENT
+        //  DENY TIMER – GENERATION‑SAFE
         // ================================================================
 
         let deniedTimer = null;
@@ -383,7 +384,7 @@
                 clearTimeout(deniedTimer);
                 deniedTimer = null;
             }
-            denyGeneration++; // invalidates any in‑flight timeout
+            denyGeneration++;
         }
 
         function resetLEDs() {
@@ -426,7 +427,6 @@
             }, 3000);
         }
 
-        // ---- Verify button ----
         verifyImg.addEventListener('click', function() {
             if (this.disabled || puzzleSolved) return;
             this.disabled = true;
@@ -567,14 +567,18 @@
             }
         }
 
-        function setContainerHeight() {
+        // ---- Set container aspect ratio based on background image ----
+        function setContainerAspectRatio() {
             const img = new Image();
             img.onload = function() {
                 const aspect = img.width / img.height;
-                const containerWidth = container.offsetWidth;
-                const heightPx = containerWidth / aspect;
-                container.style.minHeight = heightPx + 'px';
-                overlay.style.minHeight = heightPx + 'px';
+                container.style.aspectRatio = aspect;
+                console.log('✅ Aspect ratio set:', aspect);
+            };
+            img.onerror = function() {
+                // Fallback: assume a common aspect ratio (e.g., 0.85) if image fails
+                container.style.aspectRatio = '0.85';
+                console.warn('⚠️ Background image failed to load, using fallback aspect ratio 0.85');
             };
             img.src = 'bcodeface.png';
         }
@@ -584,8 +588,9 @@
         }
         window.unlockVault = unlockVault;
 
-        window.addEventListener('load', setContainerHeight);
-        window.addEventListener('resize', setContainerHeight);
+        // Set aspect ratio on load and when window resizes (in case container width changes)
+        window.addEventListener('load', setContainerAspectRatio);
+        window.addEventListener('resize', setContainerAspectRatio);
 
         renderImages();
     </script>
